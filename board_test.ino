@@ -4,8 +4,11 @@
 #include <WiFiUdp.h>
 #include <TimeLib.h>
 
+// Network Credentials
 #define WIFI_SSID "PROLiNK_PRN3009"
 #define WIFI_PASSWORD "enter2surf@"
+
+// Realtime Database Credentials
 #define FIREBASE_HOST "home-rainmeter-default-rtdb.asia-southeast1.firebasedatabase.app"
 #define FIREBASE_AUTH "88Yf9WeshLSGaL1bldvDhdVY8k0xWHFSl1Qb3gou"
 
@@ -20,6 +23,8 @@ int lastTime = 0;
 String rawFbStr = "";
 String fbStr = "";
 int fbInt;
+
+float tip = 0.2539682539; // Tipping bucket volume (per side)
 
 // Define NTP Client to get time
 WiFiUDP Udp;
@@ -37,7 +42,6 @@ void sendNTPpacket(IPAddress &address);
 void setup() {
   Serial.begin(9600);
   Serial.print("STARTING DEVICE...");
-
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to Wi-Fi");
@@ -66,6 +70,7 @@ void setup() {
   setSyncProvider(getNtpTime);
   setSyncInterval(1800);
 
+  // Initial timestamp string
   rawFbStr = String(year()) + "/" + String(month()) + "/" + String(day()) + "/" + String(hour());
 
 }
@@ -78,13 +83,13 @@ void loop() {
 
 
   if (timeStatus() != timeNotSet) {
-    if (now() != prevDisplay) { //update the display only if time has changed
+    if (now() != prevDisplay) { // Update the timestamp string if time has changed
       prevDisplay = now();
       rawFbStr = String(year()) + "/" + String(month()) + "/" + String(day()) + "/" + String(hour());
     }
   }
 
-
+  // Create database path if not specified
   if (rawFbStr != fbStr) {
     n = 0;
     fbStr = rawFbStr;
@@ -92,20 +97,22 @@ void loop() {
     Serial.print("Firebase Response: ");
     Serial.println(fbdo.stringData());
     if(fbdo.stringData() == "null") {
-      Firebase.setInt(fbdo, fbStr, n);
+      float count = n * tip;
+      Firebase.setFloat(fbdo, fbStr, (count, 2));
     }
     Serial.print("Current TimeString: ");
     Serial.println(fbStr);
   }
 
-
+  // Detect and count tipping bucket signals
   if (digitalRead(Reader) != lastRead) {
     if (digitalRead(Reader) == true) {
       Serial.println("DETECTED!");
       n = n + 1;
       Serial.print("Count: ");
-      Serial.println(n);
-      Firebase.setInt(fbdo, fbStr, n);
+      float count = n * tip;
+      Serial.println(count, 2);
+      Firebase.setFloat(fbdo, fbStr, (count, 2));
       lastRead = digitalRead(Reader);
     }
     else {
@@ -115,7 +122,7 @@ void loop() {
   }
 }
 
-
+// Update date/time from internet and set the system date and time
 void printDigits(int digits)
 {
   // utility for digital clock display: prints preceding colon and leading 0
@@ -155,7 +162,7 @@ time_t getNtpTime()
       return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
     }
   }
-  Serial.println("No NTP Response :-(");
+  Serial.println("No NTP Response!");
   return 0; // return 0 if unable to get the time
 }
 
